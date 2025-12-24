@@ -9,3 +9,5 @@ export const GAME_DRAW = "game_draw";
 export const GAME_CHECK = "game_check";
 
 export const RESIGN = "resign"
+
+export const ERROR = "error";

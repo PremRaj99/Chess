@@ -1,6 +1,6 @@
 import { WebSocket } from "ws";
 import { Chess } from "chess.js";
-import { GAME_CHECK, GAME_DRAW, GAME_OVER, INIT_GAME, MOVE } from "./messages";
+import { ERROR, GAME_CHECK, GAME_DRAW, GAME_OVER, INIT_GAME, MOVE } from "./messages";
 
 export class Game {
   public player1: WebSocket; // w
@@ -44,13 +44,13 @@ export class Game {
 
     if (isWhiteTurn && socket !== this.player1) {
       return socket.send(
-        JSON.stringify({ type: "error", message: "Not your turn" })
+        JSON.stringify({ type: ERROR, message: "Not your turn" })
       );
     }
 
     if (!isWhiteTurn && socket !== this.player2) {
       return socket.send(
-        JSON.stringify({ type: "error", message: "Not your turn" })
+        JSON.stringify({ type: ERROR, message: "Not your turn" })
       );
     }
 
@@ -64,13 +64,13 @@ export class Game {
       });
     } catch {
       return socket.send(
-        JSON.stringify({ type: "error", message: "Invalid move" })
+        JSON.stringify({ type: ERROR, message: "Invalid move" })
       );
     }
 
     if (!result) {
       return socket.send(
-        JSON.stringify({ type: "error", message: "Illegal move" })
+        JSON.stringify({ type: ERROR, message: "Illegal move" })
       );
     }
 
@@ -93,18 +93,55 @@ export class Game {
     }
 
     // ---------------- BROADCAST MOVE ----------------
+    let captured;
+    switch (result.captured) {
+      case 'p': captured = 'pawn'; break;
+      case 'r': captured = 'rook'; break;
+      case 'n': captured = 'knight'; break;
+      case 'b': captured = 'bishop'; break;
+      case 'q': captured = 'queen'; break;
+      case 'k': captured = 'king'; break;
+      default: captured = null;
+    }
+
+    let promotion;
+    switch (result.promotion) {
+      case 'q': promotion = 'queen'; break;
+      case 'r': promotion = 'rook'; break;
+      case 'b': promotion = 'bishop'; break;
+      case 'n': promotion = 'knight'; break;
+      default: promotion = null;
+    }
+
+    let capturedOn: string | null = null;
+
+    if (result.captured) {
+      if (result.flags.includes("e")) {
+        // En passant: captured pawn is behind the destination square
+        const file = result.to[0];
+        const rank =
+          result.color === "w"
+            ? parseInt(result.to[1]) - 1
+            : parseInt(result.to[1]) + 1;
+
+        capturedOn = `${file}${rank}`;
+      } else {
+        // Normal capture
+        capturedOn = result.to;
+      }
+    }
+
+
     this.broadcast({
-      type: "move",
+      type: MOVE,
       move: {
         from: result.from,
         to: result.to,
-        promotion: result.promotion,
-        flags: result.flags,   // IMPORTANT
-        san: result.san,       // IMPORTANT
-        piece: result.piece,
-        color: result.color,
-        captured: result.captured,
+        promotion: promotion,
+        captured: result.captured ? { type: captured, color: result.color === "w" ? "black" : "white" } : null,
+        capturedOn: capturedOn,
       },
+      nextTurn: this.board.turn() === "w" ? "white" : "black",
     });
   }
 
@@ -116,33 +153,39 @@ export class Game {
 
   private draw() {
     console.log("Draw")
-    this.player1.send(JSON.stringify({ type: GAME_DRAW, message: "Draw" }));
-    this.player2.send(JSON.stringify({ type: GAME_DRAW, message: "Draw" }));
+    this.broadcast({ type: GAME_DRAW, message: "Game is a Draw" });
   }
 
   private winner(socket: WebSocket) {
     if (socket === this.player1) {
       console.log("White is the Winner")
-      socket.send(
-        JSON.stringify({ type: GAME_OVER, message: "White is the Winner" })
-      );
-      this.player2.send(
-        JSON.stringify({ type: GAME_OVER, message: "White is the Winner" })
-      );
+      this.broadcast({ type: GAME_OVER, message: "White is the Winner" })
+
     } else {
       console.log("Black is the Winner")
-      socket.send(
-        JSON.stringify({ type: GAME_OVER, message: "Black is the Winner" })
-      );
-      this.player1.send(
-        JSON.stringify({ type: GAME_OVER, message: "Black is the Winner" })
-      );
+      this.broadcast({ type: GAME_OVER, message: "Black is the Winner" })
     }
   }
 
-  private broadcast(message: any) {
+  public resign(socket: WebSocket) {
+    if (socket === this.player1) {
+      console.log("Black is the Winner by Resignation")
+      this.broadcast({ type: GAME_OVER, message: "Black is the Winner by Resignation" })
+    } else {
+      console.log("White is the Winner by Resignation")
+      this.broadcast({ type: GAME_OVER, message: "White is the Winner by Resignation" })
+    }
+  }
+
+  public broadcast(message: any) {
     const msgStr = JSON.stringify(message);
     this.player1.send(msgStr);
     this.player2.send(msgStr);
+  }
+
+  public destroy() {
+
+    this.player1.close();
+    this.player2.close();
   }
 }

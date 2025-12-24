@@ -36,6 +36,8 @@ export function ChessBoard({ board, playerColor, onMove }: ChessBoardProps) {
   /* ---------------- CLICK MOVE ---------------- */
 
   const handleSquareClick = (row: number, col: number) => {
+    if (dragSource) return;
+
     const [actualRow, actualCol] = toActualIndex(row, col);
 
     if (selectedSquare) {

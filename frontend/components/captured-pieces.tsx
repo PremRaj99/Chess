@@ -2,9 +2,11 @@
 
 import { PieceColor, pieceSymbols } from "./chess-pieces";
 import { cn } from "../lib/utils";
+import { Piece } from "@/app/game/page";
 
 interface CapturedPiecesProps {
   color: PieceColor;
+  capturedPieces: Piece[];
 }
 
 const capturedPieceSymbols = {
@@ -26,11 +28,14 @@ const capturedPieceSymbols = {
   ],
 };
 
-export function CapturedPieces({ color }: CapturedPiecesProps) {
+export function CapturedPieces({
+  color,
+  capturedPieces,
+}: CapturedPiecesProps & { capturedPieces: Piece[] }) {
   return (
     <div className="flex items-center gap-2">
       <div className="flex flex-wrap gap-1">
-        {capturedPieceSymbols[color].map((symbol, index) => (
+        {capturedPieces.map((piece, index) => (
           <span
             key={index}
             className={cn(
@@ -40,7 +45,13 @@ export function CapturedPieces({ color }: CapturedPiecesProps) {
                 : " text-stone-900! text-outline-white"
             )}
           >
-            {symbol}
+            {piece?.type && ["pawn", "knight", "bishop", "rook", "queen"].includes(piece.type)
+              ? capturedPieceSymbols[color][
+                  ["pawn", "knight", "bishop", "rook", "queen"].indexOf(
+                    piece.type
+                  )
+                ]
+              : ""}
           </span>
         ))}
       </div>

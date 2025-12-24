@@ -1,5 +1,5 @@
 import { WebSocket } from "ws";
-import { INIT_GAME, MOVE, RESIGN } from "./messages";
+import { ERROR, GAME_OVER, INIT_GAME, MOVE, RESIGN } from "./messages";
 import { Game } from "./Game";
 
 export class GameManager {
@@ -47,20 +47,28 @@ export class GameManager {
             game.makeMove(socket, message.move);
           } else {
             socket.send(
-              JSON.stringify({ type: "error", message: "You are not in a game" })
+              JSON.stringify({ type: ERROR, message: "You are not in a game" })
             );
           }
           break;
         }
         case RESIGN: {
-          this.games.filter(
-            (game) => game.player1 !== socket && game.player2 !== socket
+          const game = this.games.find(
+            (game) => game.player1 === socket || game.player2 === socket
           );
-        }
+          if (!game) {
+            socket.send(
+              JSON.stringify({ type: ERROR, message: "You are not in a game" })
+            );
+            return;
+          }
+          game.resign(socket);
+          this.games = this.games.filter((g) => g !== game);
           break;
+        }
         default:
           socket.send(
-            JSON.stringify({ type: "error", message: "Unknown message type" })
+            JSON.stringify({ type: ERROR, message: "Unknown message type" })
           );
       }
     });
@@ -74,7 +82,7 @@ export class GameManager {
       this.pendingUser = null;
     } else {
       this.pendingUser = socket;
-      socket.send(JSON.stringify({ type: "init_game", message: "wait for starting a game" }));
+      socket.send(JSON.stringify({ type: INIT_GAME, message: "wait for starting a game" }));
     }
   }
 }

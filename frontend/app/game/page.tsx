@@ -30,12 +30,12 @@ const initialBoard: Piece[][] = [
     { type: "knight", color: "black" },
     { type: "rook", color: "black" },
   ],
-  Array(8).fill({ type: "pawn", color: "black" }),
+  Array.from({ length: 8 }, () => ({ type: "pawn", color: "black" })),
   Array(8).fill(null),
   Array(8).fill(null),
   Array(8).fill(null),
   Array(8).fill(null),
-  Array(8).fill({ type: "pawn", color: "white" }),
+  Array.from({ length: 8 }, () => ({ type: "pawn", color: "white" })),
   [
     { type: "rook", color: "white" },
     { type: "knight", color: "white" },
@@ -55,9 +55,12 @@ export default function GamePage() {
   const [currentTurn, setCurrentTurn] = useState<PlayerColor>("white");
   const wsRef = useRef<WebSocket | null>(null);
   const [board, setBoard] = useState<Piece[][]>(initialBoard);
+  const [whiteCapturedPieces, setWhiteCapturedPieces] = useState<Piece[]>([]);
+  const [blackCapturedPieces, setBlackCapturedPieces] = useState<Piece[]>([]);
 
   useEffect(() => {
     connectToGameServer();
+    return () => wsRef.current?.close();
   }, []);
 
   const connectToGameServer = () => {
@@ -69,7 +72,7 @@ export default function GamePage() {
     };
 
     ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
+      const msg: messageTypes = JSON.parse(event.data);
 
       switch (msg.type) {
         case "init_game":
@@ -78,10 +81,52 @@ export default function GamePage() {
           break;
 
         case "move":
+          if (msg.move.captured) {
+            setBoard((prev) => {
+              const newBoard = prev.map((r) => [...r]);
+              const [tr, tc] = algebraicToIndex(msg.move.capturedOn!);
+              newBoard[tr][tc] = null;
+              return newBoard;
+            });
+            const capturedPiece: Piece = {
+              type: msg.move.captured.type as PieceType,
+              color: msg.move.captured.color,
+            };
+            if (msg.nextTurn === "black") {
+              setBlackCapturedPieces((prev) => [...prev, capturedPiece]);
+            } else {
+              setWhiteCapturedPieces((prev) => [...prev, capturedPiece]);
+            }
+          }
           applyRemoteMove(msg.move);
+          if (msg.move.promotion) {
+            setBoard((prev) => {
+              const newBoard = prev.map((r) => [...r]);
+              const [tr, tc] = algebraicToIndex(msg.move.to);
+              newBoard[tr][tc] = {
+                type: msg.move.promotion as PieceType,
+                color: currentTurn,
+              };
+              return newBoard;
+            });
+          }
+          setCurrentTurn(msg.nextTurn);
+
           break;
 
+        case "error":
+          alert(`Error: ${msg.message}`);
+          break;
+        case "game_check":
+          if (
+            playerColor === (msg.message.includes("White") ? "black" : "white")
+          )
+            alert(msg.message);
+          break;
         case "game_over":
+          alert(msg.message);
+          setGameState("finished");
+          break;
         case "game_draw":
           alert(msg.message);
           setGameState("finished");
@@ -111,12 +156,14 @@ export default function GamePage() {
   }
 
   const sendMove = (from: string, to: string) => {
-    wsRef.current?.send(
-      JSON.stringify({
-        type: "move",
-        move: { from, to },
-      })
-    );
+    if (currentTurn !== playerColor) return;
+
+    const [fr, fc] = algebraicToIndex(from);
+    const piece = board[fr][fc];
+
+    if (!piece || piece.color !== playerColor) return;
+
+    wsRef.current?.send(JSON.stringify({ type: "move", move: { from, to } }));
   };
 
   if (gameState === "waiting") {
@@ -201,6 +248,11 @@ export default function GamePage() {
                     <p className="font-semibold text-foreground">Opponent</p>
                     <CapturedPieces
                       color={playerColor === "white" ? "black" : "white"}
+                      capturedPieces={
+                        playerColor === "white"
+                          ? blackCapturedPieces
+                          : whiteCapturedPieces
+                      }
                     />
                   </div>
                 </div>
@@ -219,7 +271,7 @@ export default function GamePage() {
               <ChessBoard
                 board={board}
                 playerColor={playerColor}
-                onMove={sendMove}
+                onMove={gameState === "playing" ? sendMove : () => {}}
               />
             </div>
 
@@ -234,7 +286,14 @@ export default function GamePage() {
                     <p className="font-semibold text-foreground">
                       You ({playerColor})
                     </p>
-                    <CapturedPieces color={playerColor} />
+                    <CapturedPieces
+                      color={playerColor}
+                      capturedPieces={
+                        playerColor === "white"
+                          ? whiteCapturedPieces
+                          : blackCapturedPieces
+                      }
+                    />
                   </div>
                 </div>
                 <Badge
