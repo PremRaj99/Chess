@@ -64,7 +64,7 @@ export default function GamePage() {
   }, []);
 
   const connectToGameServer = () => {
-    const ws = new WebSocket("ws://localhost:8080");
+    const ws = new WebSocket("wss://chess-epeq.onrender.com:8080");
     wsRef.current = ws;
 
     ws.onopen = () => {
